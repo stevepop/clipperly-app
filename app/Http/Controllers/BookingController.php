@@ -148,4 +148,16 @@ class BookingController extends Controller
             'appointment' => $appointment
         ]);
     }
+
+      /**
+     * Notify admin about new booking
+     */
+    private function notifyAdmin(Appointment $appointment)
+    {
+        // Admin email notification
+        $adminEmail = config('app.admin_email');
+        if ($adminEmail) {
+            Mail::to($adminEmail)->send(new AdminBookingNotification($appointment));
+        }
+    }
 }
