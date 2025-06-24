@@ -53,12 +53,8 @@ You can comment out or remove the lines for `DB_HOST`, `DB_PORT`, `DB_USERNAME`,
 If this is your first time using Sail, you can run it via Docker without having PHP installed:
 
 ```bash
-docker run --rm \
-    -u "$(id -u):$(id -g)" \
-    -v $(pwd):/var/www/html \
-    -w /var/www/html \
-    laravelsail/php82-composer:latest \
-    bash -c "composer install && cp .env.example .env"
+docker run --rm -v $(pwd):/app -w /app laravelsail/php82-composer:latest composer install --ignore-platform-reqs
+
 ```
 
 Then, start Sail:
@@ -67,13 +63,10 @@ Then, start Sail:
 ./vendor/bin/sail up -d
 ```
 
-If you encounter a permissions error, try:
+#### 5. Generate application key
+./vendor/bin/sail php artisan key:generate
 
-```bash
-bash vendor/bin/sail up -d
-```
-
-#### 5. Install NPM Dependencies
+#### 6. Install NPM Dependencies
 
 Navigate inside the Docker container to install and build assets:
 
@@ -82,15 +75,17 @@ Navigate inside the Docker container to install and build assets:
 ./vendor/bin/sail npm run dev
 ```
 
-#### 6. Run Migrations and Seeders
+#### 7. Run Migrations and Seeders
 
 Set up the database by running migrations and seeders:
 
 ```bash
+touch database/database.sqlite
+
 ./vendor/bin/sail artisan migrate --seed
 ```
 
-#### 7. Access the Application
+#### 8. Access the Application
 
 You can now access the application by visiting:
 
