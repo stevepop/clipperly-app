@@ -85,10 +85,8 @@
             <div class="mt-8" v-if="selectedService && selectedTimeSlot">
                 <h2 class="text-xl font-medium mb-4">3. Your Information</h2>
 
-                <!-- Success Alert -->
                 <Alert v-if="successMessage" type="success" :message="successMessage" class="mb-4" />
 
-                <!-- General Error Alert -->
                 <Alert v-if="generalError" type="error" :message="generalError" class="mb-4" />
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -148,7 +146,6 @@
                 </div>
             </div>
 
-            <!-- Submit Button -->
             <div class="mt-8 flex justify-end">
                 <button
                     @click="submitBooking"
@@ -160,7 +157,6 @@
             </div>
         </div>
 
-        <!-- Confirmation Modal -->
         <div v-if="showConfirmation" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div class="bg-white p-6 rounded-lg shadow-lg max-w-md w-full">
                 <div class="text-center">
@@ -314,22 +310,17 @@ export default {
                 }
             } catch (error) {
                 console.error('Error booking appointment:', error);
-                
+
                 if (error.response) {
-                    // Server responded with error status
                     if (error.response.status === 422) {
-                        // Validation errors
                         this.errors = error.response.data.errors || {};
                         this.generalError = error.response.data.message || 'Please check your information and try again.';
                     } else {
-                        // Other server errors
                         this.generalError = error.response.data.message || 'There was an error processing your booking. Please try again.';
                     }
                 } else if (error.request) {
-                    // Network error
                     this.generalError = 'Unable to connect to the server. Please check your internet connection and try again.';
                 } else {
-                    // Other errors
                     this.generalError = 'An unexpected error occurred. Please try again.';
                 }
             } finally {
