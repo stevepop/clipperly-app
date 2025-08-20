@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Mail\AdminBookingNotification;
 use App\Models\Service;
 use App\Models\Appointment;
 use App\Models\Availability;
@@ -111,21 +112,21 @@ class BookingController extends Controller
             }
 
             return response()->json(['time_slots' => $timeSlots]);
-            
+
         } catch (ValidationException $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Invalid request parameters.',
                 'errors' => $e->errors()
             ], 422);
-            
+
         } catch (\Exception $e) {
             Log::error('Error fetching time slots: ' . $e->getMessage(), [
                 'date' => $request->date,
                 'service_id' => $request->service_id,
                 'trace' => $e->getTraceAsString()
             ]);
-            
+
             return response()->json([
                 'success' => false,
                 'message' => 'Unable to load available time slots. Please try again.'
@@ -138,7 +139,7 @@ class BookingController extends Controller
      */
     public function storeBooking(Request $request)
     {
-        
+
     }
 
     /**
@@ -179,7 +180,15 @@ class BookingController extends Controller
      */
     private function sendBookingSMS(Appointment $appointment)
     {
-        
+
+    }
+
+    private function formatPhoneNumber($phone)
+    {
+        if ($phone && str_starts_with($phone, '0')) {
+            return '+44' . substr($phone, 1);
+        }
+        return $phone;
     }
 
     /**
@@ -192,5 +201,58 @@ class BookingController extends Controller
         if ($adminEmail) {
             Mail::to($adminEmail)->send(new AdminBookingNotification($appointment));
         }
+    }
+
+    private function sendNotifications(Appointment $appointment)
+    {
+        $failures = [];
+
+        try {
+            Mail::to($appointment->customer_email)->send(new PaymentLinkMail($appointment));
+        } catch (\Exception $e) {
+            $failures[] = 'email';
+            Log::error('Payment email failed', [
+                'appointment_id' => $appointment->id,
+                'customer_email' => $appointment->customer_email,
+                'error' => $e->getMessage()
+            ]);
+        }
+
+        if ($appointment->customer_phone) {
+            try {
+                $this->sendBookingSMS($appointment);
+            } catch (\Exception $e) {
+                $failures[] = 'sms';
+                Log::error('Booking SMS failed', [
+                    'appointment_id' => $appointment->id,
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+
+        try {
+            $this->notifyAdmin($appointment);
+        } catch (\Exception $e) {
+            $failures[] = 'admin';
+            Log::critical('Admin notification failed - Manual follow-up required', [
+                'appointment_id' => $appointment->id,
+                'booking_code' => $appointment->booking_code,
+                'customer_name' => $appointment->customer_name,
+                'customer_email' => $appointment->customer_email,
+                'appointment_time' => $appointment->appointment_time,
+                'error' => $e->getMessage()
+            ]);
+        }
+
+        return $failures;
+    }
+
+    private function getSuccessMessage(array $failures)
+    {
+        if (in_array('email', $failures)) {
+            return 'Booking created successfully! However, we couldn\'t send your payment email. Please contact us with booking code for payment instructions.';
+        }
+
+        return 'Booking created successfully! Check your email for payment instructions.';
     }
 }
