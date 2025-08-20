@@ -85,15 +85,24 @@
             <div class="mt-8" v-if="selectedService && selectedTimeSlot">
                 <h2 class="text-xl font-medium mb-4">3. Your Information</h2>
 
+                <!-- Success Alert -->
+                <Alert v-if="successMessage" type="success" :message="successMessage" class="mb-4" />
+
+                <!-- General Error Alert -->
+                <Alert v-if="generalError" type="error" :message="generalError" class="mb-4" />
+
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
                         <input
                             type="text"
                             v-model="form.customer_name"
-                            class="w-full p-2 border border-gray-300 rounded-md"
+                            class="w-full p-2 border rounded-md"
+                            :class="errors.customer_name ? 'border-red-300' : 'border-gray-300'"
+                            @input="clearFieldError('customer_name')"
                             required
                         />
+                        <InputError :message="errors.customer_name ? errors.customer_name[0] : ''" />
                     </div>
 
                     <div>
@@ -101,9 +110,12 @@
                         <input
                             type="email"
                             v-model="form.customer_email"
-                            class="w-full p-2 border border-gray-300 rounded-md"
+                            class="w-full p-2 border rounded-md"
+                            :class="errors.customer_email ? 'border-red-300' : 'border-gray-300'"
+                            @input="clearFieldError('customer_email')"
                             required
                         />
+                        <InputError :message="errors.customer_email ? errors.customer_email[0] : ''" />
                     </div>
 
                     <div>
@@ -111,17 +123,23 @@
                         <input
                             type="tel"
                             v-model="form.customer_phone"
-                            class="w-full p-2 border border-gray-300 rounded-md"
+                            class="w-full p-2 border rounded-md"
+                            :class="errors.customer_phone ? 'border-red-300' : 'border-gray-300'"
+                            @input="clearFieldError('customer_phone')"
                         />
+                        <InputError :message="errors.customer_phone ? errors.customer_phone[0] : ''" />
                     </div>
 
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Special Requests (Optional)</label>
                         <textarea
                             v-model="form.notes"
-                            class="w-full p-2 border border-gray-300 rounded-md"
+                            class="w-full p-2 border rounded-md"
+                            :class="errors.notes ? 'border-red-300' : 'border-gray-300'"
+                            @input="clearFieldError('notes')"
                             rows="2"
                         ></textarea>
+                        <InputError :message="errors.notes ? errors.notes[0] : ''" />
                     </div>
                 </div>
 
@@ -172,10 +190,14 @@
 <script>
 import axios from 'axios';
 import { Link } from '@inertiajs/vue3';
+import InputError from '@/components/InputError.vue';
+import Alert from '@/components/Alert.vue';
 
 export default {
     components: {
-        Link
+        Link,
+        InputError,
+        Alert
     },
     props: {
         services: Array,
@@ -191,6 +213,9 @@ export default {
             isSubmitting: false,
             showConfirmation: false,
             bookingCode: '',
+            errors: {},
+            generalError: '',
+            successMessage: '',
             form: {
                 customer_name: '',
                 customer_email: '',
@@ -230,6 +255,18 @@ export default {
             this.selectedService = service;
         },
 
+        clearFieldError(field) {
+            if (this.errors[field]) {
+                delete this.errors[field];
+            }
+            if (this.generalError) {
+                this.generalError = '';
+            }
+            if (this.successMessage) {
+                this.successMessage = '';
+            }
+        },
+
         async fetchTimeSlots() {
             this.loadingTimeSlots = true;
 
@@ -244,6 +281,7 @@ export default {
                 this.timeSlots = response.data.time_slots;
             } catch (error) {
                 console.error('Error fetching time slots:', error);
+                this.generalError = 'Unable to load available time slots. Please try selecting a different date.';
             } finally {
                 this.loadingTimeSlots = false;
             }
@@ -253,22 +291,47 @@ export default {
             if (!this.canSubmit || this.isSubmitting) return;
 
             this.isSubmitting = true;
+            this.errors = {};
+            this.generalError = '';
+            this.successMessage = '';
 
             try {
                 const response = await axios.post('/api/v1/bookings', {
                     service_id: this.selectedService.id,
                     appointment_time: this.selectedTimeSlot.full_datetime,
                     customer_name: this.form.customer_name,
-                    customer_email: this.form.customer_email || null,
+                    customer_email: this.form.customer_email,
                     customer_phone: this.form.customer_phone || null,
                     notes: this.form.notes || null
                 });
 
-                this.bookingCode = response.data.booking_code;
-                this.showConfirmation = true;
+                if (response.data.success) {
+                    this.bookingCode = response.data.booking_code;
+                    this.successMessage = 'Your booking has been submitted successfully!';
+                    this.showConfirmation = true;
+                } else {
+                    this.generalError = response.data.message || 'An unexpected error occurred.';
+                }
             } catch (error) {
                 console.error('Error booking appointment:', error);
-                alert('There was an error booking your appointment. Please try again.');
+                
+                if (error.response) {
+                    // Server responded with error status
+                    if (error.response.status === 422) {
+                        // Validation errors
+                        this.errors = error.response.data.errors || {};
+                        this.generalError = error.response.data.message || 'Please check your information and try again.';
+                    } else {
+                        // Other server errors
+                        this.generalError = error.response.data.message || 'There was an error processing your booking. Please try again.';
+                    }
+                } else if (error.request) {
+                    // Network error
+                    this.generalError = 'Unable to connect to the server. Please check your internet connection and try again.';
+                } else {
+                    // Other errors
+                    this.generalError = 'An unexpected error occurred. Please try again.';
+                }
             } finally {
                 this.isSubmitting = false;
             }
@@ -281,6 +344,9 @@ export default {
             this.selectedDate = '';
             this.selectedTimeSlot = null;
             this.timeSlots = [];
+            this.errors = {};
+            this.generalError = '';
+            this.successMessage = '';
             this.form = {
                 customer_name: '',
                 customer_email: '',

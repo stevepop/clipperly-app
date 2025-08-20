@@ -41,7 +41,24 @@ class PaymentController extends Controller
      */
     public function processPayment(Request $request)
     {
+        $request->validate([
+            'booking_code' => 'required|exists:appointments,booking_code',
+        ]);
 
+        $appointment = Appointment::where('booking_code', $request->booking_code)
+            ->firstOrFail();
+
+        // Update the appointment status to confirmed
+        $appointment->update(['status' => 'confirmed']);
+
+        // Send confirmation email
+        Mail::to($appointment->customer_email)->send(new AppointmentConfirmedMail($appointment));
+
+        if ($appointment->customer_phone) {
+            $this->sendConfirmationSMS($appointment);
+        }
+
+        return redirect()->route('payment.success', ['booking_code' => $appointment->booking_code]);
     }
 
     /**
@@ -58,5 +75,19 @@ class PaymentController extends Controller
             'appointment' => $appointment,
             'service' => $appointment->service
         ]);
+    }
+
+    /**
+     * Send confirmation SMS
+     */
+    private function sendConfirmationSMS(Appointment $appointment)
+    {
+        $dateTime = $appointment->appointment_time->format('D, M j \a\t g:i A');
+
+        $message = "Your appointment at Clipperly has been confirmed! ".
+            "{$appointment->service->name} on {$dateTime}. ".
+            "Booking code: {$appointment->booking_code}";
+
+        $this->twilioService->sendSMS($appointment->customer_phone, $message);
     }
 }

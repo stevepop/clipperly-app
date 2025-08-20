@@ -8,6 +8,10 @@ use App\Models\Availability;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
+use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 class BookingController extends Controller
 {
@@ -47,65 +51,86 @@ class BookingController extends Controller
      */
     public function getTimeSlots(Request $request)
     {
-        $request->validate([
-            'date' => 'required|date',
-            'service_id' => 'required|exists:services,id'
-        ]);
+        try {
+            $request->validate([
+                'date' => 'required|date',
+                'service_id' => 'required|exists:services,id'
+            ]);
 
-        $date = Carbon::parse($request->date);
-        $service = Service::findOrFail($request->service_id);
+            $date = Carbon::parse($request->date);
+            $service = Service::findOrFail($request->service_id);
 
-        // Get all available slots for this date
-        $availabilities = Availability::whereDate('date', $date->format('Y-m-d'))
-            ->where('is_available', true)
-            ->get();
+            // Get all available slots for this date
+            $availabilities = Availability::whereDate('date', $date->format('Y-m-d'))
+                ->where('is_available', true)
+                ->get();
 
-        // Get existing appointments for this date
-        $bookedAppointments = Appointment::whereDate('appointment_time', $date->format('Y-m-d'))
-            ->whereNotIn('status', ['cancelled', 'no_show'])
-            ->get();
+            // Get existing appointments for this date
+            $bookedAppointments = Appointment::whereDate('appointment_time', $date->format('Y-m-d'))
+                ->whereNotIn('status', ['cancelled', 'no_show'])
+                ->get();
 
-        // Generate time slots at 30-minute intervals
-        $timeSlots = [];
+            // Generate time slots at 30-minute intervals
+            $timeSlots = [];
 
-        foreach ($availabilities as $slot) {
-            $startTime = Carbon::parse($date->format('Y-m-d') . ' ' . $slot->start_time);
-            $endTime = Carbon::parse($date->format('Y-m-d') . ' ' . $slot->end_time);
+            foreach ($availabilities as $slot) {
+                $startTime = Carbon::parse($date->format('Y-m-d') . ' ' . $slot->start_time);
+                $endTime = Carbon::parse($date->format('Y-m-d') . ' ' . $slot->end_time);
 
-            while ($startTime->copy()->addMinutes($service->duration) <= $endTime) {
-                $slotEndTime = $startTime->copy()->addMinutes($service->duration);
+                while ($startTime->copy()->addMinutes($service->duration) <= $endTime) {
+                    $slotEndTime = $startTime->copy()->addMinutes($service->duration);
 
-                // Check if this time slot conflicts with any booked appointments
-                $isAvailable = true;
+                    // Check if this time slot conflicts with any booked appointments
+                    $isAvailable = true;
 
-                foreach ($bookedAppointments as $appointment) {
-                    $appointmentStart = $appointment->appointment_time;
-                    $appointmentEnd = $appointmentStart->copy()->addMinutes($service->duration);
+                    foreach ($bookedAppointments as $appointment) {
+                        $appointmentStart = $appointment->appointment_time;
+                        $appointmentEnd = $appointmentStart->copy()->addMinutes($service->duration);
 
-                    // Check for overlap
-                    if (
-                        ($startTime >= $appointmentStart && $startTime < $appointmentEnd) ||
-                        ($slotEndTime > $appointmentStart && $slotEndTime <= $appointmentEnd) ||
-                        ($startTime <= $appointmentStart && $slotEndTime >= $appointmentEnd)
-                    ) {
-                        $isAvailable = false;
-                        break;
+                        // Check for overlap
+                        if (
+                            ($startTime >= $appointmentStart && $startTime < $appointmentEnd) ||
+                            ($slotEndTime > $appointmentStart && $slotEndTime <= $appointmentEnd) ||
+                            ($startTime <= $appointmentStart && $slotEndTime >= $appointmentEnd)
+                        ) {
+                            $isAvailable = false;
+                            break;
+                        }
                     }
-                }
 
-                if ($isAvailable) {
-                    $timeSlots[] = [
-                        'time' => $startTime->format('H:i'),
-                        'formatted' => $startTime->format('g:i A'),
-                        'full_datetime' => $startTime->format('Y-m-d H:i:s')
-                    ];
-                }
+                    if ($isAvailable) {
+                        $timeSlots[] = [
+                            'time' => $startTime->format('H:i'),
+                            'formatted' => $startTime->format('g:i A'),
+                            'full_datetime' => $startTime->format('Y-m-d H:i:s')
+                        ];
+                    }
 
-                $startTime->addMinutes(30); // 30-minute intervals
+                    $startTime->addMinutes(30); // 30-minute intervals
+                }
             }
-        }
 
-        return response()->json(['time_slots' => $timeSlots]);
+            return response()->json(['time_slots' => $timeSlots]);
+            
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid request parameters.',
+                'errors' => $e->errors()
+            ], 422);
+            
+        } catch (\Exception $e) {
+            Log::error('Error fetching time slots: ' . $e->getMessage(), [
+                'date' => $request->date,
+                'service_id' => $request->service_id,
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Unable to load available time slots. Please try again.'
+            ], 500);
+        }
     }
 
     /**
@@ -113,7 +138,7 @@ class BookingController extends Controller
      */
     public function storeBooking(Request $request)
     {
-
+        
     }
 
     /**
@@ -149,7 +174,15 @@ class BookingController extends Controller
         ]);
     }
 
-      /**
+    /**
+     * Send booking confirmation SMS
+     */
+    private function sendBookingSMS(Appointment $appointment)
+    {
+        
+    }
+
+    /**
      * Notify admin about new booking
      */
     private function notifyAdmin(Appointment $appointment)

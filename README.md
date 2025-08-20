@@ -64,18 +64,11 @@ Then, start Sail:
 ```
 
 #### 5. Generate application key
-./vendor/bin/sail php artisan key:generate
-
-#### 6. Install NPM Dependencies
-
-Navigate inside the Docker container to install and build assets:
-
 ```bash
-./vendor/bin/sail npm install
-./vendor/bin/sail npm run dev
+./vendor/bin/sail php artisan key:generate
 ```
 
-#### 7. Run Migrations and Seeders
+#### 6. Run Migrations and Seeders
 
 Set up the database by running migrations and seeders:
 
@@ -84,6 +77,17 @@ touch database/database.sqlite
 
 ./vendor/bin/sail artisan migrate --seed
 ```
+
+
+#### 7. Install NPM Dependencies
+
+Navigate inside the Docker container to install and build assets:
+
+```bash
+./vendor/bin/sail npm install
+./vendor/bin/sail npm run dev
+```
+
 
 #### 8. Access the Application
 
